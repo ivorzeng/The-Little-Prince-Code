@@ -1,0 +1,126 @@
+#include <Servo.h>
+
+const int pressureSensorPin = A0;  
+const int inflatePin1 = 3;  
+const int deflatePin1 = 4;  
+const int inflatePin2 = 5;  
+const int deflatePin2 = 6;  
+const int servoPin = 9;  
+
+bool isInflating = false;  
+bool isDeflating = false;  
+bool isServoActive = false;  
+unsigned long lastPressTime = 0;  
+unsigned long inflateStartTime = 0;  
+unsigned long deflateStartTime = 0;  
+const unsigned long debounceDelay = 200;  
+const unsigned long inflateDuration = 30000;  
+const unsigned long deflateDuration = 30000;  
+const unsigned long servoDelay = 1000;  
+
+Servo myServo;
+unsigned long lastServoMoveTime = 0;  
+int servoPos = 0;  
+int servoDirection = 1;  
+
+void setup() {
+  pinMode(pressureSensorPin, INPUT);
+  pinMode(inflatePin1, OUTPUT);
+  pinMode(deflatePin1, OUTPUT);
+  pinMode(inflatePin2, OUTPUT);
+  pinMode(deflatePin2, OUTPUT);
+  digitalWrite(inflatePin1, LOW);  
+  digitalWrite(deflatePin1, LOW);  
+  digitalWrite(inflatePin2, LOW);  
+  digitalWrite(deflatePin2, LOW);  
+  myServo.attach(servoPin);  
+  myServo.write(0);  
+  Serial.begin(9600);
+}
+
+void loop() {
+  int sensorValue = analogRead(pressureSensorPin);
+  unsigned long currentTime = millis();
+  Serial.println(sensorValue, DEC);
+
+  // Detect short press (for inflation and servo activation)
+  if (sensorValue > 100 && sensorValue < 400) {  
+    if (currentTime - lastPressTime > debounceDelay) {
+      lastPressTime = currentTime;
+
+      if (!isInflating) {
+        // Start inflation and servo
+        Serial.println("Starting inflation");
+        digitalWrite(inflatePin1, HIGH);
+        digitalWrite(inflatePin2, HIGH);
+        isInflating = true;
+        inflateStartTime = currentTime;
+        isDeflating = false;  
+        digitalWrite(deflatePin1, LOW);
+        digitalWrite(deflatePin2, LOW);
+        isServoActive = true;  
+      } else {
+        // Stop inflation
+        Serial.println("Stopping inflation");
+        digitalWrite(inflatePin1, LOW);
+        digitalWrite(inflatePin2, LOW);
+        isInflating = false;
+      }
+    }
+  }
+
+  // Check if inflation duration has exceeded the set time
+  if (isInflating && currentTime - inflateStartTime >= inflateDuration) {
+    Serial.println("Inflation duration reached, stopping inflation");
+    digitalWrite(inflatePin1, LOW);
+    digitalWrite(inflatePin2, LOW);
+    isInflating = false;
+  }
+
+  // Detect long press (for deflation and servo deactivation)
+  if (sensorValue > 150) {
+    if (!isDeflating) {
+      if (currentTime - lastPressTime > debounceDelay) {
+        lastPressTime = currentTime;
+        // Start deflation and stop servo
+        Serial.println("Starting deflation");
+        digitalWrite(inflatePin1, LOW);  
+        digitalWrite(inflatePin2, LOW);
+        digitalWrite(deflatePin1, HIGH);
+        digitalWrite(deflatePin2, HIGH);
+        isDeflating = true;
+        deflateStartTime = currentTime;
+        isServoActive = false;  
+        myServo.write(90);  
+      }
+    }
+  } else {
+    // Stop deflation if sensor is released
+    if (isDeflating) {
+      Serial.println("Stopping deflation");
+      digitalWrite(deflatePin1, LOW);
+      digitalWrite(deflatePin2, LOW);
+      isDeflating = false;
+    }
+  }
+
+  // Keep deflating until the set deflation duration is reached
+  if (isDeflating && currentTime - deflateStartTime >= deflateDuration) {
+    Serial.println("Deflation duration reached, stopping deflation");
+    digitalWrite(deflatePin1, LOW);
+    digitalWrite(deflatePin2, LOW);
+    isDeflating = false;
+  }
+
+  // Servo oscillation
+  if (isServoActive) {
+    if (currentTime - lastServoMoveTime >= servoDelay) {
+      lastServoMoveTime = currentTime;
+      servoPos += servoDirection * 90;  
+      if (servoPos >= 100 || servoPos <= 0) {
+        servoDirection = -servoDirection;  
+      }
+      myServo.write(servoPos);
+    }
+  }
+}
